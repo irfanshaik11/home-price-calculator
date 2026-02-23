@@ -263,7 +263,7 @@ export default function IRRCalculator() {
     <div className="min-h-screen bg-stone-50 p-4 md:p-8">
       <div className="max-w-5xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-stone-800 mb-1">Oakland Rental — IRR Calculator</h1>
+          <h1 className="text-3xl font-bold text-stone-800 mb-1"> Rental — IRR Calculator</h1>
           <p className="text-stone-500">Repair costs estimated by year built</p>
         </div>
 
