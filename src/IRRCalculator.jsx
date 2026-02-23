@@ -398,7 +398,7 @@ export default function IRRCalculator() {
             <SliderInput label="Purchase Price" value={purchasePrice} set={setPurchasePrice} step={10000} min={150000} max={1800000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} />
             <SliderInput label="Down Payment" value={downPctInput} set={setDownPctInput} step={5} min={0} max={100} suffix="%" />
             <SliderInput label="Mortgage Rate (30yr)" value={mortgageRate} set={setMortgageRate} step={0.125} min={3} max={10} suffix="%" hint="Current avg ~6.0%" />
-            <SliderInput label="Monthly Rent" value={monthlyRent} set={setMonthlyRent} step={100} min={1000} max={6000} prefix="$" />
+            <SliderInput label="Monthly Rent" value={monthlyRent} set={setMonthlyRent} step={100} min={1000} max={200000} prefix="$" />
             <SliderInput label="Annual Rent Growth" value={rentGrowth} set={setRentGrowth} step={0.5} min={0} max={8} suffix="%" />
             <SliderInput label="Annual Appreciation" value={appreciation} set={setAppreciation} step={0.5} min={-3} max={10} suffix="%" />
             <SliderInput label="Hold Period" value={holdYears} set={setHoldYears} step={1} min={1} max={30} suffix=" yrs" />
