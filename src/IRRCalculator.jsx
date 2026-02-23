@@ -243,16 +243,54 @@ export default function IRRCalculator() {
     return "🟢";
   };
 
-  const SliderInput = ({ label, value, set, step, min, max, prefix, suffix, fmtFn, hint, highlight }) => (
+  const SliderInput = ({ label, value, set, step, min, max, prefix, suffix, fmtFn, hint, highlight, allowDirectInput = false }) => {
+    const parseAndClamp = (raw) => {
+      const parsed = parseFloat(raw);
+      if (!Number.isFinite(parsed)) return null;
+      return Math.min(max, Math.max(min, parsed));
+    };
+
+    return (
     <div className={`flex flex-col gap-1 ${highlight ? "bg-amber-50 rounded-lg p-2 -m-2" : ""}`}>
       <div className="flex justify-between items-baseline">
         <label className="text-xs font-medium text-stone-500">{label}</label>
-        <span className="text-sm font-semibold text-stone-800">{prefix || ""}{fmtFn ? fmtFn(value) : value}{suffix || ""}</span>
+        {allowDirectInput ? (
+          <div className="flex items-center gap-1">
+            {prefix && <span className="text-sm font-semibold text-stone-800">{prefix}</span>}
+            <input
+              type="number"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              onChange={(e) => {
+                const nextValue = parseAndClamp(e.target.value);
+                if (nextValue !== null) set(nextValue);
+              }}
+              className="w-24 rounded-md border border-stone-300 bg-white px-2 py-0.5 text-right text-sm font-semibold text-stone-800 focus:border-stone-500 focus:outline-none"
+            />
+            {suffix && <span className="text-sm font-semibold text-stone-800">{suffix}</span>}
+          </div>
+        ) : (
+          <span className="text-sm font-semibold text-stone-800">{prefix || ""}{fmtFn ? fmtFn(value) : value}{suffix || ""}</span>
+        )}
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => set(parseFloat(e.target.value))} className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-600" />
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const nextValue = parseAndClamp(e.target.value);
+          if (nextValue !== null) set(nextValue);
+        }}
+        className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-600"
+      />
       {hint && <span className="text-xs text-stone-400 italic">{hint}</span>}
     </div>
   );
+  };
 
   const yr1 = analysis.yearlyData.length > 0 ? analysis.yearlyData[0] : null;
 
@@ -398,7 +436,7 @@ export default function IRRCalculator() {
             <SliderInput label="Purchase Price" value={purchasePrice} set={setPurchasePrice} step={10000} min={150000} max={1800000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} />
             <SliderInput label="Down Payment" value={downPctInput} set={setDownPctInput} step={5} min={0} max={100} suffix="%" />
             <SliderInput label="Mortgage Rate (30yr)" value={mortgageRate} set={setMortgageRate} step={0.125} min={3} max={10} suffix="%" hint="Current avg ~6.0%" />
-            <SliderInput label="Monthly Rent" value={monthlyRent} set={setMonthlyRent} step={100} min={1000} max={50000} prefix="$" />
+            <SliderInput label="Monthly Rent" value={monthlyRent} set={setMonthlyRent} step={100} min={1000} max={50000} prefix="$" allowDirectInput />
             <SliderInput label="Annual Rent Growth" value={rentGrowth} set={setRentGrowth} step={0.5} min={0} max={8} suffix="%" />
             <SliderInput label="Annual Appreciation" value={appreciation} set={setAppreciation} step={0.5} min={-3} max={10} suffix="%" />
             <SliderInput label="Hold Period" value={holdYears} set={setHoldYears} step={1} min={1} max={30} suffix=" yrs" />
