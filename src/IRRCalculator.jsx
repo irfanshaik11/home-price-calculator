@@ -447,7 +447,7 @@ export default function IRRCalculator() {
             <SliderInput label="Annual Rent Growth" value={rentGrowth} set={setRentGrowth} step={0.5} min={0} max={8} suffix="%" />
             <SliderInput label="Annual Appreciation" value={appreciation} set={setAppreciation} step={0.5} min={-3} max={10} suffix="%" />
             <SliderInput label="Hold Period" value={holdYears} set={setHoldYears} step={1} min={1} max={30} suffix=" yrs" />
-            <SliderInput label="Renovation Bonus (Year 1)" value={renovationBonus} set={setRenovationBonus} step={5000} min={0} max={200000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} hint="Increases home value in year 1" allowDirectInput />
+            <SliderInput label="Renovation Bonus (Year 1)" value={renovationBonus} set={setRenovationBonus} step={5000} min={-200000} max={200000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} hint="Adds to or subtracts from home value in year 1" allowDirectInput />
             <SliderInput label="Selling Costs" value={sellingCost} set={setSellingCost} step={0.5} min={0} max={10} suffix="%" />
             <SliderInput label="Closing Costs" value={closingCost} set={setClosingCost} step={0.5} min={0} max={6} suffix="%" />
           </div>
