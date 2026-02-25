@@ -104,7 +104,7 @@ function estimateCosts(yearBuilt) {
 }
 
 function runAnalysis(params) {
-  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve } = params;
+  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve, monthlyHOA = 0 } = params;
   const downPct = downPctInput / 100;
   const downPayment = purchasePrice * downPct;
   const closingCosts = purchasePrice * (closingCost / 100);
@@ -124,10 +124,11 @@ function runAnalysis(params) {
     const mgmt = rent * (propertyMgmt / 100);
     const maintenance = propValue * (maintenanceRate / 100);
     const capex = capexReserve * Math.pow(1.03, y - 1);
-    const totalExpenses = propTax + ins + vacancy + mgmt + maintenance + capex;
+    const hoa = (monthlyHOA || 0) * 12;
+    const totalExpenses = propTax + ins + vacancy + mgmt + maintenance + capex + hoa;
     const noi = rent - totalExpenses;
     const cashFlow = noi - annualMortgage;
-    const expenseBreakdown = { propTax, ins, vacancy, mgmt, maintenance, capex, totalExpenses };
+    const expenseBreakdown = { propTax, ins, vacancy, mgmt, maintenance, capex, hoa, totalExpenses };
 
     if (y < holdYears) {
       cashFlows.push(cashFlow);
@@ -168,6 +169,7 @@ export default function IRRCalculator() {
   const [propertyTaxRate, setPropertyTaxRate] = useState(1.2);
   const [vacancyRate, setVacancyRate] = useState(5);
   const [propertyMgmt, setPropertyMgmt] = useState(8);
+  const [monthlyHOA, setMonthlyHOA] = useState(0);
 
   // Manual overrides (null = use estimated)
   const [manualMaint, setManualMaint] = useState(null);
@@ -182,28 +184,28 @@ export default function IRRCalculator() {
 
   const sharedParams = { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt };
 
-  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve]);
+  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve, monthlyHOA }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA]);
 
   // Compare across decades
   const decadeComparison = useMemo(() => {
     const decades = [1890, 1920, 1950, 1970, 1990, 2000, 2010, 2020];
     return decades.map(yr => {
       const c = estimateCosts(yr);
-      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve });
+      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve, monthlyHOA });
       const yr1 = res.yearlyData[0];
       return { yearBuilt: yr, ...c, irr: res.irr, cashOnCash: res.cashOnCash, yr1Expenses: yr1 ? yr1.totalExpenses : 0, yr1CashFlow: yr1 ? yr1.cashFlow : 0 };
     });
-  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt]);
+  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, monthlyHOA]);
 
   // Price sensitivity
   const pricePoints = [250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000];
   const sensitivityData = useMemo(() => {
     return pricePoints.map(price => {
-      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve });
+      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve, monthlyHOA });
       const yr1 = res.yearlyData[0];
       return { price, irr: res.irr, cashOnCash: res.cashOnCash, downPayment: res.totalCashInvested, monthlyCashFlow: yr1 ? yr1.cashFlow / 12 : 0 };
     });
-  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve]);
+  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA]);
 
   const fmt = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   const fmtPct = (n) => (n != null ? (n * 100).toFixed(1) + "%" : "N/A");
@@ -453,6 +455,7 @@ export default function IRRCalculator() {
             <SliderInput label="Property Mgmt" value={propertyMgmt} set={setPropertyMgmt} step={1} min={0} max={12} suffix="% of rent" />
             <SliderInput label="Maintenance" value={maintenanceRate} set={(v) => setManualMaint(v)} step={0.25} min={0.5} max={4} suffix="% of value" hint={manualMaint !== null ? "Manually set" : `Auto: ${costs.maintenanceRate}%`} />
             <SliderInput label="CapEx Reserve ($/yr)" value={capexReserve} set={(v) => setManualCapex(v)} step={500} min={0} max={10000} prefix="$" hint={manualCapex !== null ? "Manually set" : `Auto: ${fmt(costs.capexReserve)}`} />
+            <SliderInput label="Monthly HOA" value={monthlyHOA} set={setMonthlyHOA} step={25} min={0} max={2000} prefix="$" allowDirectInput />
           </div>
           <button onClick={() => { setManualMaint(null); setManualCapex(null); setManualInsurance(null); }}
             className="mt-3 text-xs text-blue-500 hover:text-blue-700 font-medium">↻ Reset overrides to auto-estimate</button>
