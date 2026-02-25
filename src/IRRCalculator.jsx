@@ -104,7 +104,7 @@ function estimateCosts(yearBuilt) {
 }
 
 function runAnalysis(params) {
-  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve, monthlyHOA = 0 } = params;
+  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve, monthlyHOA = 0, hoaGrowthRate = 6, renovationBonus = 0 } = params;
   const downPct = downPctInput / 100;
   const downPayment = purchasePrice * downPct;
   const closingCosts = purchasePrice * (closingCost / 100);
@@ -117,14 +117,17 @@ function runAnalysis(params) {
 
   for (let y = 1; y <= holdYears; y++) {
     const rent = monthlyRent * 12 * Math.pow(1 + rentGrowth / 100, y - 1);
-    const propValue = purchasePrice * Math.pow(1 + appreciation / 100, y);
-    const propTax = purchasePrice * (propertyTaxRate / 100);
+    // Apply renovation bonus starting in year 1
+    const baseValue = purchasePrice + (y >= 1 ? renovationBonus : 0);
+    const propValueStart = baseValue * Math.pow(1 + appreciation / 100, Math.max(0, y - 1));
+    const propValue = baseValue * Math.pow(1 + appreciation / 100, y);
+    const propTax = propValueStart * (propertyTaxRate / 100);
     const ins = insurance * Math.pow(1.03, y - 1);
     const vacancy = rent * (vacancyRate / 100);
     const mgmt = rent * (propertyMgmt / 100);
-    const maintenance = propValue * (maintenanceRate / 100);
+    const maintenance = propValueStart * (maintenanceRate / 100);
     const capex = capexReserve * Math.pow(1.03, y - 1);
-    const hoa = (monthlyHOA || 0) * 12;
+    const hoa = (monthlyHOA || 0) * 12 * Math.pow(1 + (hoaGrowthRate || 0) / 100, y - 1);
     const totalExpenses = propTax + ins + vacancy + mgmt + maintenance + capex + hoa;
     const noi = rent - totalExpenses;
     const cashFlow = noi - annualMortgage;
@@ -150,7 +153,7 @@ function runAnalysis(params) {
   const cashOnCash = yearlyData.length > 0 ? (yearlyData[0].cashFlow / totalCashInvested) * 100 : 0;
   const expenseRatioYr1 = yearlyData.length > 0 ? (yearlyData[0].totalExpenses / yearlyData[0].rent) * 100 : 0;
   const totalCashFlow = cashFlows.slice(1).reduce((a, b) => a + b, 0);
-  const equityMultiple = (totalCashFlow + totalCashInvested) / totalCashInvested;
+  const equityMultiple = totalCashFlow / totalCashInvested;
 
   return { irr, downPayment, closingCosts, totalCashInvested, monthlyMortgage, equityMultiple, cashOnCash, yearlyData, expenseRatioYr1 };
 }
@@ -170,6 +173,8 @@ export default function IRRCalculator() {
   const [vacancyRate, setVacancyRate] = useState(5);
   const [propertyMgmt, setPropertyMgmt] = useState(8);
   const [monthlyHOA, setMonthlyHOA] = useState(0);
+  const [hoaGrowthRate, setHoaGrowthRate] = useState(6);
+  const [renovationBonus, setRenovationBonus] = useState(0);
 
   // Manual overrides (null = use estimated)
   const [manualMaint, setManualMaint] = useState(null);
@@ -184,28 +189,28 @@ export default function IRRCalculator() {
 
   const sharedParams = { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt };
 
-  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve, monthlyHOA }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA]);
+  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus]);
 
   // Compare across decades
   const decadeComparison = useMemo(() => {
     const decades = [1890, 1920, 1950, 1970, 1990, 2000, 2010, 2020];
     return decades.map(yr => {
       const c = estimateCosts(yr);
-      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve, monthlyHOA });
+      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve, monthlyHOA, hoaGrowthRate });
       const yr1 = res.yearlyData[0];
       return { yearBuilt: yr, ...c, irr: res.irr, cashOnCash: res.cashOnCash, yr1Expenses: yr1 ? yr1.totalExpenses : 0, yr1CashFlow: yr1 ? yr1.cashFlow : 0 };
     });
-  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, monthlyHOA]);
+  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, monthlyHOA, hoaGrowthRate]);
 
   // Price sensitivity
   const pricePoints = [250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000];
   const sensitivityData = useMemo(() => {
     return pricePoints.map(price => {
-      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve, monthlyHOA });
+      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus });
       const yr1 = res.yearlyData[0];
       return { price, irr: res.irr, cashOnCash: res.cashOnCash, downPayment: res.totalCashInvested, monthlyCashFlow: yr1 ? yr1.cashFlow / 12 : 0 };
     });
-  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA]);
+  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus]);
 
   const fmt = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   const fmtPct = (n) => (n != null ? (n * 100).toFixed(1) + "%" : "N/A");
@@ -435,13 +440,14 @@ export default function IRRCalculator() {
         <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 mb-6">
           <h2 className="text-lg font-semibold text-stone-700 mb-4">Deal Assumptions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
-            <SliderInput label="Purchase Price" value={purchasePrice} set={setPurchasePrice} step={10000} min={150000} max={1800000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} />
+            <SliderInput label="Purchase Price" value={purchasePrice} set={setPurchasePrice} step={10000} min={10000} max={1800000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} />
             <SliderInput label="Down Payment" value={downPctInput} set={setDownPctInput} step={5} min={0} max={100} suffix="%" />
             <SliderInput label="Mortgage Rate (30yr)" value={mortgageRate} set={setMortgageRate} step={0.125} min={3} max={10} suffix="%" hint="Current avg ~6.0%" />
             <SliderInput label="Monthly Rent" value={monthlyRent} set={setMonthlyRent} step={100} min={1000} max={50000} prefix="$" allowDirectInput />
             <SliderInput label="Annual Rent Growth" value={rentGrowth} set={setRentGrowth} step={0.5} min={0} max={8} suffix="%" />
             <SliderInput label="Annual Appreciation" value={appreciation} set={setAppreciation} step={0.5} min={-3} max={10} suffix="%" />
             <SliderInput label="Hold Period" value={holdYears} set={setHoldYears} step={1} min={1} max={30} suffix=" yrs" />
+            <SliderInput label="Renovation Bonus (Year 1)" value={renovationBonus} set={setRenovationBonus} step={5000} min={0} max={200000} prefix="$" fmtFn={(v) => (v / 1000).toFixed(0) + "k"} hint="Increases home value in year 1" allowDirectInput />
             <SliderInput label="Selling Costs" value={sellingCost} set={setSellingCost} step={0.5} min={0} max={10} suffix="%" />
             <SliderInput label="Closing Costs" value={closingCost} set={setClosingCost} step={0.5} min={0} max={6} suffix="%" />
           </div>
@@ -456,6 +462,7 @@ export default function IRRCalculator() {
             <SliderInput label="Maintenance" value={maintenanceRate} set={(v) => setManualMaint(v)} step={0.25} min={0.5} max={4} suffix="% of value" hint={manualMaint !== null ? "Manually set" : `Auto: ${costs.maintenanceRate}%`} />
             <SliderInput label="CapEx Reserve ($/yr)" value={capexReserve} set={(v) => setManualCapex(v)} step={500} min={0} max={10000} prefix="$" hint={manualCapex !== null ? "Manually set" : `Auto: ${fmt(costs.capexReserve)}`} />
             <SliderInput label="Monthly HOA" value={monthlyHOA} set={setMonthlyHOA} step={25} min={0} max={2000} prefix="$" allowDirectInput />
+            <SliderInput label="HOA yearly increase" value={hoaGrowthRate} set={setHoaGrowthRate} step={0.25} min={5} max={7} suffix="%" hint="Annual HOA escalation" />
           </div>
           <button onClick={() => { setManualMaint(null); setManualCapex(null); setManualInsurance(null); }}
             className="mt-3 text-xs text-blue-500 hover:text-blue-700 font-medium">↻ Reset overrides to auto-estimate</button>
