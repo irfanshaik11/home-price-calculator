@@ -32,14 +32,19 @@ function computeRemainingBalance(principal, annualRate, years, monthsPaid) {
   return principal * Math.pow(1 + r, monthsPaid) - payment * (Math.pow(1 + r, monthsPaid) - 1) / r;
 }
 
+// Helper: calculate maintenance rate from age
+function calculateMaintenanceRate(age) {
+  // Maintenance rate: 0.75% for new, scaling to ~2.5% for 130+ year old
+  // Curve: starts slow, accelerates after 50 years
+  return 0.75 + Math.min(1.75, (age / 130) * 1.25 + Math.max(0, (age - 50) / 80) * 0.5);
+}
+
 // Model: estimate costs based on home age
 function estimateCosts(yearBuilt) {
   const currentYear = 2026;
   const age = currentYear - yearBuilt;
 
-  // Maintenance rate: 0.75% for new, scaling to ~2.5% for 130+ year old
-  // Curve: starts slow, accelerates after 50 years
-  const maintenanceRate = 0.75 + Math.min(1.75, (age / 130) * 1.25 + Math.max(0, (age - 50) / 80) * 0.5);
+  const maintenanceRate = calculateMaintenanceRate(age);
 
   // CapEx reserve: $500/yr for new, up to $4000/yr for very old
   const capexReserve = Math.round((500 + (age / 130) * 2500 + Math.max(0, (age - 40) / 90) * 1000) / 100) * 100;
@@ -104,7 +109,7 @@ function estimateCosts(yearBuilt) {
 }
 
 function runAnalysis(params) {
-  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve, monthlyHOA = 0, hoaGrowthRate = 6, renovationBonus = 0 } = params;
+  const { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, insurance, vacancyRate, propertyMgmt, maintenanceRate, capexReserve, monthlyHOA = 0, hoaGrowthRate = 6, renovationBonus = 0, yearBuilt = null } = params;
   const downPct = downPctInput / 100;
   const downPayment = purchasePrice * downPct;
   const closingCosts = purchasePrice * (closingCost / 100);
@@ -125,13 +130,19 @@ function runAnalysis(params) {
     const ins = insurance * Math.pow(1.03, y - 1);
     const vacancy = rent * (vacancyRate / 100);
     const mgmt = rent * (propertyMgmt / 100);
-    const maintenance = propValueStart * (maintenanceRate / 100);
+
+    // Age-based maintenance: recalculate rate each year as home ages
+    const currentYear = 2026;
+    const currentAge = yearBuilt !== null ? (currentYear - yearBuilt) + (y - 1) : null;
+    const yearlyMaintenanceRate = currentAge !== null ? calculateMaintenanceRate(currentAge) : maintenanceRate;
+    const maintenance = propValueStart * (yearlyMaintenanceRate / 100);
+
     const capex = capexReserve * Math.pow(1.03, y - 1);
     const hoa = (monthlyHOA || 0) * 12 * Math.pow(1 + (hoaGrowthRate || 0) / 100, y - 1);
     const totalExpenses = propTax + ins + vacancy + mgmt + maintenance + capex + hoa;
     const noi = rent - totalExpenses;
     const cashFlow = noi - annualMortgage;
-    const expenseBreakdown = { propTax, ins, vacancy, mgmt, maintenance, capex, hoa, totalExpenses };
+    const expenseBreakdown = { propTax, ins, vacancy, mgmt, maintenance, maintenanceRate: yearlyMaintenanceRate, capex, hoa, totalExpenses };
 
     if (y < holdYears) {
       cashFlows.push(cashFlow);
@@ -189,14 +200,14 @@ export default function IRRCalculator() {
 
   const sharedParams = { purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt };
 
-  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus]);
+  const analysis = useMemo(() => runAnalysis({ ...sharedParams, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus, yearBuilt }), [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus, yearBuilt]);
 
   // Compare across decades
   const decadeComparison = useMemo(() => {
     const decades = [1890, 1920, 1950, 1970, 1990, 2000, 2010, 2020];
     return decades.map(yr => {
       const c = estimateCosts(yr);
-      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve, monthlyHOA, hoaGrowthRate });
+      const res = runAnalysis({ ...sharedParams, insurance: c.insurance, maintenanceRate: c.maintenanceRate, capexReserve: c.capexReserve, monthlyHOA, hoaGrowthRate, yearBuilt: yr });
       const yr1 = res.yearlyData[0];
       return { yearBuilt: yr, ...c, irr: res.irr, cashOnCash: res.cashOnCash, yr1Expenses: yr1 ? yr1.totalExpenses : 0, yr1CashFlow: yr1 ? yr1.cashFlow : 0 };
     });
@@ -206,11 +217,11 @@ export default function IRRCalculator() {
   const pricePoints = [250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000];
   const sensitivityData = useMemo(() => {
     return pricePoints.map(price => {
-      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus });
+      const res = runAnalysis({ ...sharedParams, purchasePrice: price, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus, yearBuilt });
       const yr1 = res.yearlyData[0];
       return { price, irr: res.irr, cashOnCash: res.cashOnCash, downPayment: res.totalCashInvested, monthlyCashFlow: yr1 ? yr1.cashFlow / 12 : 0 };
     });
-  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus]);
+  }, [purchasePrice, downPctInput, mortgageRate, monthlyRent, rentGrowth, appreciation, holdYears, sellingCost, closingCost, propertyTaxRate, vacancyRate, propertyMgmt, insurance, maintenanceRate, capexReserve, monthlyHOA, hoaGrowthRate, renovationBonus, yearBuilt]);
 
   const fmt = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
   const fmtPct = (n) => (n != null ? (n * 100).toFixed(1) + "%" : "N/A");
@@ -331,9 +342,10 @@ export default function IRRCalculator() {
           {/* Auto-estimated costs */}
           <div className="mt-4 grid grid-cols-3 gap-4">
             <div className="bg-stone-50 rounded-lg p-3 text-center">
-              <div className="text-xs text-stone-400 font-medium">Est. Maintenance</div>
+              <div className="text-xs text-stone-400 font-medium">Est. Maintenance (Year 1)</div>
               <div className="text-xl font-bold text-stone-800">{maintenanceRate}%<span className="text-xs font-normal text-stone-400"> of value/yr</span></div>
               <div className="text-xs text-stone-500">{fmt(purchasePrice * (maintenanceRate / 100))}/yr</div>
+              <div className="text-xs text-amber-600 font-medium mt-1">↑ Increases with age</div>
             </div>
             <div className="bg-stone-50 rounded-lg p-3 text-center">
               <div className="text-xs text-stone-400 font-medium">Est. CapEx Reserve</div>
@@ -514,11 +526,14 @@ export default function IRRCalculator() {
         {/* Year by Year */}
         <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
           <h2 className="text-lg font-semibold text-stone-700 mb-4">{yearBuilt} Build — Year-by-Year</h2>
+          <p className="text-xs text-amber-600 mb-2">Maintenance rate increases as home ages during hold period</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-stone-200">
                   <th className="text-left py-2 px-2 font-medium text-stone-500">Yr</th>
+                  <th className="text-right py-2 px-2 font-medium text-stone-500">Age</th>
+                  <th className="text-right py-2 px-2 font-medium text-stone-500">Maint%</th>
                   <th className="text-right py-2 px-2 font-medium text-stone-500">Rent</th>
                   <th className="text-right py-2 px-2 font-medium text-stone-500">Expenses</th>
                   <th className="text-right py-2 px-2 font-medium text-stone-500">NOI</th>
