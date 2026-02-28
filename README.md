@@ -1,4 +1,4 @@
-# Rental Property IRR Calculator
+# Rental Property IRR Calculator 
 
 A financial calculator for analyzing rental property investments. Calculate IRR, cash-on-cash returns, and equity multiples with interactive scenario analysis.
 
